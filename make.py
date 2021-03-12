@@ -30,7 +30,7 @@ class Board:
 
 class De0Nano(Board):
     soc_kwargs = {
-        "integrated_sram_size": 0x200,
+        "integrated_sram_size": 0,
         "integrated_rom_size": 0x400,
         "l2_size" : 2048,              # Use Wishbone and L2 for memory accesses.
     }
