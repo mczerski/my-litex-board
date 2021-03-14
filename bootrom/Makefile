@@ -6,7 +6,7 @@ rom.d: rom.elf
 rom.bin: rom.elf
 	riscv64-unknown-elf-objcopy -O binary $^ $@
 
-rom.elf: rom.c
+rom.elf: rom.c sdram_phy.h
 	riscv64-unknown-elf-gcc -march=rv32ima -mabi=ilp32 -fomit-frame-pointer -Wall -fno-builtin -nostdinc -nostartfiles -fno-stack-protector -O3 -Wl,--script=linker.ld $^ -o $@
 
 clean:
