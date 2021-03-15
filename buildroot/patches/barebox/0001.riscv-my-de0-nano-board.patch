@@ -158,8 +158,8 @@ index 000000000..809599266
 @@ -0,0 +1,7 @@
 +#!/bin/sh
 +
-+memcpy -s /mnt/nfs/rv32.dtb 0 0x40ef0000 2459
-+memcpy -s /mnt/nfs/opensbi.bin 0 0x40f00000 53640
-+memcpy -s /mnt/nfs/rootfs.cpio 0 0x41000000 7564800
-+memcpy -s /mnt/nfs/Image 0 0x40000000 6003832
++memcpy -s /mnt/nfs/rv32.dtb 0 0x40ef0000 0x2000000
++memcpy -s /mnt/nfs/opensbi.bin 0 0x40f00000 0x2000000
++memcpy -s /mnt/nfs/rootfs.cpio 0 0x41000000 0x2000000
++memcpy -s /mnt/nfs/Image 0 0x40000000 0x2000000
 +go 0x40f00000
