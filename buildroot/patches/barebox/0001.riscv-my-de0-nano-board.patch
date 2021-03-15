@@ -155,11 +155,38 @@ new file mode 100644
 index 000000000..809599266
 --- /dev/null
 +++ b/arch/riscv/mach-litex/env/boot/net
-@@ -0,0 +1,7 @@
+@@ -0,0 +1,6 @@
 +#!/bin/sh
 +
 +memcpy -s /mnt/nfs/rv32.dtb 0 0x40ef0000 0x2000000
 +memcpy -s /mnt/nfs/opensbi.bin 0 0x40f00000 0x2000000
-+memcpy -s /mnt/nfs/rootfs.cpio 0 0x41000000 0x2000000
 +memcpy -s /mnt/nfs/Image 0 0x40000000 0x2000000
 +go 0x40f00000
+diff --git a/arch/riscv/mach-litex/env/nv/dev.eth0.mode b/arch/riscv/mach-litex/env/nv/dev.eth0.mode
+index 7b4d4ba2e..72ab18f1e 100644
+--- a/arch/riscv/mach-litex/env/nv/dev.eth0.mode
++++ b/arch/riscv/mach-litex/env/nv/dev.eth0.mode
+@@ -1 +1 @@
+-static
++dhcp
+diff --git a/arch/riscv/mach-litex/env/nv/dev.eth0.ipaddr b/arch/riscv/mach-litex/env/nv/dev.eth0.ipaddr
+deleted file mode 100644
+index 0e6ac45ed..000000000
+--- a/arch/riscv/mach-litex/env/nv/dev.eth0.ipaddr
++++ /dev/null
+@@ -1 +0,0 @@
+-192.168.1.50
+diff --git a/arch/riscv/mach-litex/env/nv/dev.eth0.netmask b/arch/riscv/mach-litex/env/nv/dev.eth0.netmask
+deleted file mode 100644
+index d30f9e9fd..000000000
+--- a/arch/riscv/mach-litex/env/nv/dev.eth0.netmask
++++ /dev/null
+@@ -1 +0,0 @@
+-255.255.255.0
+diff --git a/arch/riscv/mach-litex/env/nv/dev.eth0.serverip b/arch/riscv/mach-litex/env/nv/dev.eth0.serverip
+deleted file mode 100644
+index 95b5900c7..000000000
+--- a/arch/riscv/mach-litex/env/nv/dev.eth0.serverip
++++ /dev/null
+@@ -1 +0,0 @@
+-192.168.1.100
