@@ -117,9 +117,9 @@ index 000000000..59c79ae5e
 +		};
 +	};
 +
-+	uart0: serial@f0001800 {
++	uart0: serial@f0001000 {
 +		compatible = "litex,uart";
-+		reg = <0xf0001000 0x18>;
++		reg = <0xf0001000 0x100>;
 +		status = "disabled";
 +	};
 +
@@ -140,13 +140,13 @@ index 000000000..59c79ae5e
 +		status = "disabled";
 +	};
 +
-+	spi0: spi@f0005000 {
++	spi0: spi@f0007800 {
 +		compatible = "litex,spiflash";
 +
 +		#address-cells = <1>;
 +		#size-cells = <0>;
 +
-+		reg = <0xf0005000 0x100>;
++		reg = <0xf0007800 0x100>;
 +		status = "disabled";
 +	};
 +};

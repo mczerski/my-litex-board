@@ -10,25 +10,24 @@ import os
 import argparse
 
 from migen import *
-from migen.genlib.resetsync import AsyncResetSynchronizer
 
 from litex.build.io import DDROutput
-from litex.build.generic_platform import Subsignal, Pins, IOStandard
-
-from litex_boards.platforms import de0nano
+from litex.build.generic_platform import Subsignal, Pins, IOStandard, Misc
 
 from litex.soc.cores.clock import CycloneIVPLL
 from litex.soc.integration.soc_core import *
 from litex.soc.integration.soc_sdram import *
 from litex.soc.integration.builder import *
-from litex.soc.cores.led import LedChaser
-from litex.soc.cores.gpio import GPIOIn
+from litex.soc.cores.gpio import *
+from litex.soc.cores.spi import SPIMaster
+from litex.soc.cores.bitbang import I2CMaster
 
 from litedram.modules import IS42S16160
 from litedram.phy import GENSDRPHY, HalfRateGENSDRPHY
 
 from liteeth.phy.rmii import LiteEthPHYRMII
-from litex.soc.cores.spi import SPIMaster
+
+from litex_boards.platforms import de0nano
 
 # CRG ----------------------------------------------------------------------------------------------
 
@@ -64,7 +63,24 @@ class _CRG(Module):
 
 # BaseSoC ------------------------------------------------------------------------------------------
 
-class BaseSoC(SoCCore):
+class De0SoC(SoCCore):
+    csr_map = {
+        "ctrl": 0,
+        "uart": 2,
+        "timer0": 3,
+    }
+    interrupt_map = {
+        "uart": 0,
+        "timer0": 1,
+    }
+    mem_map = {
+        "rom": 0x00000000,
+        "main_ram": 0x40000000,
+        "ethmac": 0xb0000000, # len: 0x2000
+        "spiflash": 0xd0000000,
+        "csr": 0xf0000000,
+    }
+
     def __init__(self, sys_clk_freq=int(50e6), sdram_rate="1:1", **kwargs):
         platform = de0nano.Platform()
         platform.toolchain.additional_qsf_commands = [
@@ -89,10 +105,20 @@ class BaseSoC(SoCCore):
             'set_input_delay -clock eth_rx_clk_virt -min [expr $CLKAs_min + $tCOa_min + $BDa_min - $CLKAd_max] [get_ports {eth_rx_data[*] eth_crs_dv}]',
         ]
         # SoCCore ----------------------------------------------------------------------------------
-        SoCCore.__init__(self, platform, sys_clk_freq,
-            ident          = "LiteX SoC on DE0-Nano",
-            ident_version  = True,
-            **kwargs)
+        SoCCore.__init__(
+            self,
+            platform,
+            sys_clk_freq,
+            ident="LiteX SoC on DE0-Nano",
+            ident_version=True,
+            cpu_type="vexriscv_smp",
+            cpu_variant="linux",
+            max_sdram_size=0x40000000, # Limit mapped SDRAM to 1GB.
+            **kwargs
+        )
+
+        # Add linker region for OpenSBI
+        self.add_memory_region("opensbi", self.mem_map["main_ram"] + 0x00f00000, 0x80000, type="cached+linker")
 
         # CRG --------------------------------------------------------------------------------------
         self.submodules.crg = _CRG(platform, sys_clk_freq, sdram_rate=sdram_rate)
@@ -113,9 +139,7 @@ class BaseSoC(SoCCore):
 
         # Leds -------------------------------------------------------------------------------------
         led_pads = platform.request_all("user_led")
-        self.submodules.leds = LedChaser(
-            pads         = led_pads,
-            sys_clk_freq = sys_clk_freq)
+        self.submodules.leds = GPIOOut(led_pads)
         self.add_csr("leds")
         self.add_constant("LEDS_NGPIO", len(led_pads))
 
@@ -147,29 +171,19 @@ class BaseSoC(SoCCore):
         self.add_csr("ethphy")
         self.add_ethernet(phy=self.ethphy, nrxslots=4, ntxslots=2)
 
-        # additional pin mappings
-        #_spi_jp_ios = [
-        #    ("spi", 0,
-        #        Subsignal("cs_n", Pins("JP2:2 JP2:14")),
-        #        Subsignal("miso", Pins("JP2:4")),
-        #        Subsignal("mosi", Pins("JP2:6")),
-        #        Subsignal("clk", Pins("JP2:8")),
-        #        IOStandard("3.3-V LVTTL")
-        #    ),
-        #]
-        #_interrupts_jp_ios = [
-        #    ("interrupt", 0, Pins("JP2:10"), IOStandard("3.3-V LVTTL")),
-        #    ("interrupt", 1, Pins("JP2:16"), IOStandard("3.3-V LVTTL")),
-        #]
-        #self.platform.add_extension(_spi_jp_ios)
-        #self.platform.add_extension(_interrupts_jp_ios)
-
-        # SPI
-        #spi_pads = self.platform.request("spi")
-        #self.submodules.spi = SPIMaster(spi_pads, 8, self.sys_clk_freq, 20e6)
-        #self.spi.add_clk_divider()
-        #self.add_csr("spi")
-        #self.add_constant("SPI_NUM_CS", len(spi_pads.cs_n))
+        # SD Card
+        _sdcard_jp_ios = [
+            ("sdcard", 0,
+                Subsignal("data", Pins("JP2:14 JP2:24 JP2:22 JP2:20"), Misc("WEAK_PULL_UP_RESISTOR ON")),
+                Subsignal("cmd", Pins("JP2:16"), Misc("WEAK_PULL_UP_RESISTOR ON")),
+                Subsignal("clk", Pins("JP2:18")),
+                Subsignal("cd", Pins("JP2:26")),
+                Misc("FAST_OUTPUT_REGISTER ON"),
+                IOStandard("3.3-V LVTTL"),
+            ),
+        ]
+        self.platform.add_extension(_sdcard_jp_ios)
+        self.add_sdcard()
 
         # EPCS
         _spi_flash_ios = [
@@ -182,20 +196,30 @@ class BaseSoC(SoCCore):
             ),
         ]
         self.platform.add_extension(_spi_flash_ios)
-
         self.add_spi_flash(mode="1x", dummy_cycles=8)
 
-        # interrupts
-        #interrupts_pads = self.platform.request_all("interrupt")
-        #self.submodules.interrupts = GPIOIn(interrupts_pads, {0: 'fall', 1: 'fall'})
-        #self.add_csr("interrupts")
-        #self.irq.add("interrupts", use_loc_if_exists=True)
-        #self.add_constant("INTERRUPTS_NGPIO", len(interrupts_pads))
+        # I2C ADXL345
+        self.submodules.i2c0 = I2CMaster(self.platform.request("i2c", 0))
+        self.add_csr("i2c0")
+        adxl_pads = self.platform.request("acc")
+        self.comb += adxl_pads.cs_n.eq(1)
 
+        # interrupts
+        #_interrupts_jp_ios = [
+        #    ("interrupt", 0, Pins("JP2:1"),  IOStandard("3.3-V LVTTL")),
+        #    ("interrupt", 1, Pins("JP2:3"),  IOStandard("3.3-V LVTTL")),
+        #]
+        #self.platform.add_extension(_interrupts_jp_ios)
+        #interrupts_pads = self.platform.request_all("interrupt")
+        interrupts_pads = adxl_pads.int
+        self.submodules.interrupts = GPIOIn(interrupts_pads, with_irq=True)
+        self.add_csr("interrupts")
+        self.irq.add("interrupts", use_loc_if_exists=True)
+        self.add_constant("INTERRUPTS_NGPIO", len(interrupts_pads))
 
         # Keys
         switches_pads = self.platform.request_all("key")
-        self.submodules.switches = GPIOIn(switches_pads, {0: 'fall', 1: 'fall'})
+        self.submodules.switches = GPIOIn(pads=switches_pads, with_irq=True)
         self.add_csr("switches")
         self.irq.add("switches", use_loc_if_exists=True)
         self.add_constant("SWITCHES_NGPIO", len(switches_pads))
@@ -212,7 +236,7 @@ def main():
     soc_sdram_args(parser)
     args = parser.parse_args()
 
-    soc = BaseSoC(
+    soc = De0SoC(
         sys_clk_freq = int(float(args.sys_clk_freq)),
         sdram_rate   = args.sdram_rate,
         **soc_sdram_argdict(args)
