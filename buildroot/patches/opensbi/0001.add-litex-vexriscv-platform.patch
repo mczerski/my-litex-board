@@ -1,0 +1,259 @@
+diff --git a/platform/litex/vexriscv/config.mk b/platform/litex/vexriscv/config.mk
+new file mode 100644
+index 0000000..5b89a1d
+--- /dev/null
++++ b/platform/litex/vexriscv/config.mk
+@@ -0,0 +1,30 @@
++#
++# SPDX-License-Identifier: BSD-2-Clause
++#
++# Copyright (c) 2020 Florent Kermarrec <florent@enjoy-digital.fr>
++# Copyright (c) 2020 Dolu1990 <charles.papon.90@gmail.com>
++#
++
++# Compiler flags
++platform-cppflags-y =
++platform-cflags-y =
++platform-asflags-y =
++platform-ldflags-y =
++
++# Command for platform specific "make run"
++platform-runcmd = echo LiteX/VexRiscv SMP
++
++PLATFORM_RISCV_XLEN = 32
++PLATFORM_RISCV_ABI = ilp32
++PLATFORM_RISCV_ISA = rv32ima
++PLATFORM_RISCV_CODE_MODEL = medany
++
++# Blobs to build
++FW_TEXT_START=0x40F00000
++FW_DYNAMIC=y
++FW_JUMP=y
++FW_JUMP_ADDR=0x40000000
++FW_JUMP_FDT_ADDR=0x40EF0000
++FW_PAYLOAD=y
++FW_PAYLOAD_OFFSET=0x40000000
++FW_PAYLOAD_FDT_ADDR=0x40EF0000
+diff --git a/platform/litex/vexriscv/litex.c b/platform/litex/vexriscv/litex.c
+new file mode 100644
+index 0000000..6210df7
+--- /dev/null
++++ b/platform/litex/vexriscv/litex.c
+@@ -0,0 +1,67 @@
++/*
++ * SPDX-License-Identifier: BSD-2-Clause
++ *
++ * Copyright (c) 2020 Florent Kermarrec <florent@enjoy-digital.fr>
++ * Copyright (c) 2020 Dolu1990 <charles.papon.90@gmail.com>
++ *
++ */
++
++#include <stdint.h>
++
++#define UART_EV_TX	0x1
++#define UART_EV_RX	0x2
++
++#define MMPTR(a) (*((volatile uint32_t *)(a)))
++
++static inline void csr_write_simple(unsigned long v, unsigned long a)
++{
++	MMPTR(a) = v;
++}
++
++static inline unsigned long csr_read_simple(unsigned long a)
++{
++	return MMPTR(a);
++}
++
++#define CSR_BASE 0xf0000000L
++
++static inline uint8_t uart_rxtx_read(void) {
++	return csr_read_simple(CSR_BASE + 0x1000L);
++}
++static inline void uart_rxtx_write(uint8_t v) {
++	csr_write_simple(v, CSR_BASE + 0x1000L);
++}
++
++static inline uint8_t uart_txfull_read(void) {
++	return csr_read_simple(CSR_BASE + 0x1004L);
++}
++
++static inline uint8_t uart_rxempty_read(void) {
++	return csr_read_simple(CSR_BASE + 0x1008L);
++}
++
++static inline void uart_ev_pending_write(uint8_t v) {
++	csr_write_simple(v, CSR_BASE + 0x1010L);
++}
++
++static inline uint8_t uart_txempty_read(void) {
++	return csr_read_simple(CSR_BASE + 0x1018L);
++}
++static inline uint8_t uart_rxfull_read(void) {
++	return csr_read_simple(CSR_BASE + 0x101cL);
++}
++
++
++void vex_putc(char c){
++	while (uart_txfull_read());
++	uart_rxtx_write(c);
++	uart_ev_pending_write(UART_EV_TX);
++}
++
++int vex_getc(void){
++	char c;
++	if (uart_rxempty_read()) return -1;
++	c = uart_rxtx_read();
++	uart_ev_pending_write(UART_EV_RX);
++	return c;
++}
+diff --git a/platform/litex/vexriscv/objects.mk b/platform/litex/vexriscv/objects.mk
+new file mode 100644
+index 0000000..440994a
+--- /dev/null
++++ b/platform/litex/vexriscv/objects.mk
+@@ -0,0 +1,8 @@
++#
++# SPDX-License-Identifier: BSD-2-Clause
++#
++# Copyright (c) 2020 Dolu1990 <charles.papon.90@gmail.com>
++#
++
++platform-objs-y += platform.o
++platform-objs-y += litex.o
+diff --git a/platform/litex/vexriscv/platform.c b/platform/litex/vexriscv/platform.c
+new file mode 100644
+index 0000000..2c3a297
+--- /dev/null
++++ b/platform/litex/vexriscv/platform.c
+@@ -0,0 +1,130 @@
++/*
++ * SPDX-License-Identifier: BSD-2-Clause
++ *
++ * Copyright (c) 2020 Dolu1990 <charles.papon.90@gmail.com>
++ *
++ */
++
++#include <sbi/riscv_asm.h>
++#include <sbi/riscv_encoding.h>
++#include <sbi/riscv_io.h>
++#include <sbi/sbi_const.h>
++#include <sbi/sbi_hart.h>
++#include <sbi/sbi_platform.h>
++#include <sbi_utils/irqchip/plic.h>
++#include <sbi_utils/serial/uart8250.h>
++#include <sbi_utils/sys/clint.h>
++
++
++/* clang-format off */
++
++#define VEX_HART_COUNT         8
++#define VEX_PLATFORM_FEATURES  (SBI_PLATFORM_HAS_TIMER_VALUE | SBI_PLATFORM_HAS_MFAULTS_DELEGATION)
++#define VEX_CLINT_ADDR         0xF0010000
++#define VEX_HART_STACK_SIZE	   8192
++
++/* clang-format on */
++
++static struct clint_data clint = {VEX_CLINT_ADDR, 0, VEX_HART_COUNT, true};
++
++static int vex_final_init(bool cold_boot)
++{
++	return 0;
++}
++
++static u32 vex_pmp_region_count(u32 hartid)
++{
++	return 0;
++}
++
++static int vex_pmp_region_info(u32 hartid, u32 index, ulong *prot, ulong *addr,
++				ulong *log2size)
++{
++	int ret = 0;
++
++	switch (index) {
++	default:
++		ret = -1;
++		break;
++	};
++
++	return ret;
++}
++
++
++extern void vex_putc(char ch);
++extern int vex_getc(void);
++
++static int vex_console_init(void)
++{
++	return 0;
++}
++
++static int vex_irqchip_init(bool cold_boot)
++{
++	return 0;
++}
++
++static int vex_ipi_init(bool cold_boot)
++{
++	int rc;
++
++	if (cold_boot) {
++		rc = clint_cold_ipi_init(&clint);
++		if (rc)
++			return rc;
++	}
++
++	return clint_warm_ipi_init();
++}
++
++static int vex_timer_init(bool cold_boot)
++{
++	int rc;
++	if (cold_boot) {
++		rc = clint_cold_timer_init(&clint, NULL); /* Timer has no reference */
++		if (rc)
++			return rc;
++	}
++
++	return clint_warm_timer_init();
++}
++
++static int vex_system_reset(u32 type)
++{
++	/* Tell the "finisher" that the simulation
++	 * was successful so that QEMU exits
++	 */
++
++	return 0;
++}
++
++const struct sbi_platform_operations platform_ops = {
++	.pmp_region_count	= vex_pmp_region_count,
++	.pmp_region_info	= vex_pmp_region_info,
++	.final_init		    = vex_final_init,
++	.console_putc		= vex_putc,
++	.console_getc		= vex_getc,
++	.console_init		= vex_console_init,
++	.irqchip_init		= vex_irqchip_init,
++	.ipi_send		    = clint_ipi_send,
++	.ipi_clear		    = clint_ipi_clear,
++	.ipi_init		    = vex_ipi_init,
++	.timer_value		= clint_timer_value,
++	.timer_event_stop	= clint_timer_event_stop,
++	.timer_event_start	= clint_timer_event_start,
++	.timer_init			= vex_timer_init,
++	.system_reset		= vex_system_reset
++};
++
++const struct sbi_platform platform = {
++	.opensbi_version	= OPENSBI_VERSION,
++	.platform_version	= SBI_PLATFORM_VERSION(0x0, 0x01),
++	.name			    = "LiteX / VexRiscv-SMP",
++	.features		    = VEX_PLATFORM_FEATURES,
++	.hart_count		    = VEX_HART_COUNT,
++	.hart_stack_size	= VEX_HART_STACK_SIZE,
++	.platform_ops_addr	= (unsigned long)&platform_ops
++};
++
++
