@@ -68,10 +68,25 @@ class De0SoC(SoCCore):
         "ctrl": 0,
         "uart": 2,
         "timer0": 3,
+        "interrupts": 5,
+        "switches": 6,
+        "leds": 7,
+        "ethphy": 8,
+        "ethmac": 9,
+        "sdphy": 10,
+        "sdcore": 11,
+        "sdblock2mem": 12,
+        "sdmem2block": 13,
+        "litespi0": 14,
+        "spiflash": 15,
+        "i2c0": 16,
     }
     interrupt_map = {
         "uart": 0,
         "timer0": 1,
+        "ethmac": 2,
+        "interrupts": 3,
+        "switches": 4
     }
     mem_map = {
         "rom": 0x00000000,
@@ -140,10 +155,15 @@ class De0SoC(SoCCore):
         # Leds -------------------------------------------------------------------------------------
         led_pads = platform.request_all("user_led")
         self.submodules.leds = GPIOOut(led_pads)
-        self.add_csr("leds")
         self.add_constant("LEDS_NGPIO", len(led_pads))
 
-        # RMII Ethernet
+        # Keys -------------------------------------------------------------------------------------
+        switches_pads = self.platform.request_all("key")
+        self.submodules.switches = GPIOIn(pads=switches_pads, with_irq=True)
+        self.irq.add("switches", use_loc_if_exists=True)
+        self.add_constant("SWITCHES_NGPIO", len(switches_pads))
+
+        # RMII Ethernet ----------------------------------------------------------------------------
         _ethernet_jp_ios = [
             ("eth_clocks", 0,
                 Subsignal("ref_clk", Pins("JP2:34")),
@@ -168,10 +188,9 @@ class De0SoC(SoCCore):
             pads       = self.platform.request("eth"),
             refclk_cd  = None,
         )
-        self.add_csr("ethphy")
         self.add_ethernet(phy=self.ethphy, nrxslots=4, ntxslots=2)
 
-        # SD Card
+        # SD Card ----------------------------------------------------------------------------------
         _sdcard_jp_ios = [
             ("sdcard", 0,
                 Subsignal("data", Pins("JP2:14 JP2:24 JP2:22 JP2:20"), Misc("WEAK_PULL_UP_RESISTOR ON")),
@@ -185,7 +204,7 @@ class De0SoC(SoCCore):
         self.platform.add_extension(_sdcard_jp_ios)
         self.add_sdcard()
 
-        # EPCS
+        # EPCS ------------------------------------------------------------------------------------
         _spi_flash_ios = [
             ("spiflash", 0,
                 Subsignal("miso", Pins("H2")),
@@ -198,7 +217,7 @@ class De0SoC(SoCCore):
         self.platform.add_extension(_spi_flash_ios)
         self.add_spi_flash(mode="1x", dummy_cycles=8)
 
-        # I2C ADXL345
+        # I2C ADXL345 -----------------------------------------------------------------------------
         _i2c_ios = [
             ("i2c_onboard", 0,
                 Subsignal("scl", Pins("F2")),
@@ -208,11 +227,25 @@ class De0SoC(SoCCore):
         ]
         self.platform.add_extension(_i2c_ios)
         self.submodules.i2c0 = I2CMaster(self.platform.request("i2c_onboard", 0))
-        self.add_csr("i2c0")
         adxl_pads = self.platform.request("acc")
         self.comb += adxl_pads.cs_n.eq(1)
 
-        # interrupts
+        # ADC -------------------------------------------------------------------------------------
+        _spi_ios = [
+            ("adc128s", 0,
+                Subsignal("cs_n", Pins("A10")),
+                Subsignal("mosi", Pins("B10")),
+                Subsignal("clk", Pins("B14")),
+                Subsignal("miso", Pins("A9")),
+                IOStandard("3.3-V LVTTL")
+            )
+        ]
+        self.platform.add_extension(_spi_ios)
+        spi_pads = self.platform.request("adc128s")
+        self.submodules.spi = SPIMaster(spi_pads, 8, self.clk_freq, 1e6)
+        self.add_csr("spi")
+
+        # interrupts ------------------------------------------------------------------------------
         #_interrupts_jp_ios = [
         #    ("interrupt", 0, Pins("JP2:1"),  IOStandard("3.3-V LVTTL")),
         #    ("interrupt", 1, Pins("JP2:3"),  IOStandard("3.3-V LVTTL")),
@@ -221,16 +254,8 @@ class De0SoC(SoCCore):
         #interrupts_pads = self.platform.request_all("interrupt")
         interrupts_pads = adxl_pads.int
         self.submodules.interrupts = GPIOIn(interrupts_pads, with_irq=True)
-        self.add_csr("interrupts")
         self.irq.add("interrupts", use_loc_if_exists=True)
         self.add_constant("INTERRUPTS_NGPIO", len(interrupts_pads))
-
-        # Keys
-        switches_pads = self.platform.request_all("key")
-        self.submodules.switches = GPIOIn(pads=switches_pads, with_irq=True)
-        self.add_csr("switches")
-        self.irq.add("switches", use_loc_if_exists=True)
-        self.add_constant("SWITCHES_NGPIO", len(switches_pads))
 
 # Build --------------------------------------------------------------------------------------------
 
