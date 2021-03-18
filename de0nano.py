@@ -199,7 +199,15 @@ class De0SoC(SoCCore):
         self.add_spi_flash(mode="1x", dummy_cycles=8)
 
         # I2C ADXL345
-        self.submodules.i2c0 = I2CMaster(self.platform.request("i2c", 0))
+        _i2c_ios = [
+            ("i2c_onboard", 0,
+                Subsignal("scl", Pins("F2")),
+                Subsignal("sda", Pins("F1")),
+                IOStandard("3.3-V LVTTL")
+            ),
+        ]
+        self.platform.add_extension(_i2c_ios)
+        self.submodules.i2c0 = I2CMaster(self.platform.request("i2c_onboard", 0))
         self.add_csr("i2c0")
         adxl_pads = self.platform.request("acc")
         self.comb += adxl_pads.cs_n.eq(1)
