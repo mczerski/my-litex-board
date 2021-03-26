@@ -1,192 +1,62 @@
-diff --git a/arch/riscv/dts/litex_de0_nano.dts b/arch/riscv/dts/litex_de0_nano.dts
-new file mode 100644
-index 000000000..1868b55bc
---- /dev/null
-+++ b/arch/riscv/dts/litex_de0_nano.dts
-@@ -0,0 +1,78 @@
-+// SPDX-License-Identifier: GPL-2.0-only
+diff --git a/arch/riscv/Kconfig b/arch/riscv/Kconfig
+index ca764d54d..7fff78a68 100644
+--- a/arch/riscv/Kconfig
++++ b/arch/riscv/Kconfig
+@@ -67,6 +67,13 @@ config BUILTIN_DTB_NAME
+ 	string "DTB to build into the barebox image"
+ 	depends on BUILTIN_DTB
+ 
++config SPIFLASH_DTB
++	bool "use DTB from spiflash"
++	depends on OFTREE
 +
-+#include "litex_de0_nano.dtsi"
++config SPIFLASH_DTB_ADDR
++	hex "address of the DTB in memory mapped spiflash"
 +
-+#include <dt-bindings/gpio/gpio.h>
-+
-+/ {
-+	model = "LiteX VexRiscV-SoC-Linux";
-+	compatible = "litex,vexriscv-soc-linux";
-+
-+	aliases {
-+		rom = &rom;
-+	};
-+
-+	chosen {
-+		stdout-path = &uart0;
-+
-+		environment {
-+			compatible = "barebox,environment";
-+			device-path = &environment_spi;
-+		};
-+	};
-+
-+	/* ARTY board */
-+	rom: rom@00000000 {
-+		compatible = "mmio-sram";
-+		reg = <0x00000000 0x00000400>;
-+		read-only;
-+	};
-+
-+	main_ram: memory@40000000 {
-+		device_type = "memory";
-+		reg = <0x40000000 0x10000000>;
-+	};
-+};
-+
-+&uart0 {
-+	status = "okay";
-+};
-+
-+&mac0 {
-+	status = "okay";
-+};
-+
-+&spi0 {
-+	status = "okay";
-+
-+	spiflash: w25q128@0 {
-+		#address-cells = <1>;
-+		#size-cells = <1>;
-+		compatible = "winbond,w25q128", "jedec,spi-nor";
-+		spi-max-frequency = <25000000>;
-+		reg = <0>;
-+
-+        partition@0 {
-+            label = "fpga_image";
-+            reg = <0x00000000 0x000b0000>;
-+            read-only;
-+        };
-+        environment_spi: partition@b0000 {
-+            label = "barebox-environment";
-+            reg = <0x000b0000 0x00050000>;
-+        };
-+        partition@100000 {
-+            label = "barebox";
-+            reg = <0x00100000 0x00100000>;
-+        };
-+        partition@200000 {
-+            label = "free_space";
-+            reg = <0x00200000 0x00600000>;
-+        };
-+	};
-+};
-+
-+//
-+//&timer0 {
-+//	status = "okay";
-+//};
-diff --git a/arch/riscv/dts/litex_de0_nano.dtsi b/arch/riscv/dts/litex_de0_nano.dtsi
-new file mode 100644
-index 000000000..59c79ae5e
---- /dev/null
-+++ b/arch/riscv/dts/litex_de0_nano.dtsi
-@@ -0,0 +1,62 @@
-+// SPDX-License-Identifier: GPL-2.0-only
-+
-+/dts-v1/;
-+
-+/ {
-+	compatible = "litex,vexriscv-soc-linux", "litex-dev";
-+
-+	#address-cells = <1>;
-+	#size-cells = <1>;
-+
-+	clocks {
-+		ref_clk: ref_clk {
-+			#clock-cells = <0>;
-+			compatible = "fixed-clock";
-+			clock-frequency = <50000000>;
-+		};
-+	};
-+
-+	cpus {
-+		#address-cells = <1>;
-+		#size-cells = <0>;
-+
-+		cpu@0 {
-+			device_type = "cpu";
-+			compatible = "spinalhdl,vexriscv", "riscv";
-+			reg = <0>;
-+		};
-+	};
-+
-+	uart0: serial@f0001000 {
-+		compatible = "litex,uart";
-+		reg = <0xf0001000 0x100>;
-+		status = "disabled";
-+	};
-+
-+	timer0: timer@f0001800 {
-+		compatible = "litex,timer0";
-+		reg = <0xf0001800 0x40>;
-+		clocks = <&ref_clk>;
-+		status = "disabled";
-+	};
-+
-+	mac0: mac@f0004000 {
-+		compatible = "litex,liteeth";
-+		reg = <0xf0004800 0x7c /* base */
-+			0xf0004000 0x0a /* mdio_base */
-+			0xb0000000 0x3000>; /* buf_base */
-+		tx-fifo-depth = <2>;
-+		rx-fifo-depth = <4>;
-+		status = "disabled";
-+	};
-+
-+	spi0: spi@f0007800 {
-+		compatible = "litex,spiflash";
-+
-+		#address-cells = <1>;
-+		#size-cells = <0>;
-+
-+		reg = <0xf0007800 0x100>;
-+		status = "disabled";
-+	};
-+};
+ source "arch/riscv/mach-erizo/Kconfig"
+ source "arch/riscv/mach-litex/Kconfig"
+ 
+diff --git a/arch/riscv/boot/dtb.c b/arch/riscv/boot/dtb.c
+index 5d73413a4..1058385bb 100644
+--- a/arch/riscv/boot/dtb.c
++++ b/arch/riscv/boot/dtb.c
+@@ -24,7 +24,12 @@ static int of_riscv_init(void)
+ 	if (root)
+ 		return 0;
+ 
+-	root = of_unflatten_dtb(__dtb_start);
++    if (IS_ENABLED(CONFIG_SPIFLASH_DTB)) {
++        root = of_unflatten_dtb((const void *)CONFIG_SPIFLASH_DTB_ADDR);
++    }
++    else {
++	    root = of_unflatten_dtb(__dtb_start);
++    }
+ 	if (!IS_ERR(root)) {
+ 		pr_debug("using internal DTB\n");
+ 		of_set_root_node(root);
 diff --git a/arch/riscv/mach-litex/env/boot/net b/arch/riscv/mach-litex/env/boot/net
 new file mode 100644
-index 000000000..809599266
+index 000000000..91b6b1242
 --- /dev/null
 +++ b/arch/riscv/mach-litex/env/boot/net
-@@ -0,0 +1,6 @@
+@@ -0,0 +1,7 @@
 +#!/bin/sh
 +
-+memcpy -s /mnt/nfs/rv32.dtb 0 0x40ef0000 0x2000000
++oftree -s rv32.dtb
++memcpy -s rv32.dtb 0 0x40ef0000 0x2000000
 +memcpy -s /mnt/nfs/fw_jump.bin 0 0x40f00000 0x2000000
 +memcpy -s /mnt/nfs/Image 0 0x40000000 0x2000000
 +go 0x40f00000
-diff --git a/arch/riscv/mach-litex/env/nv/dev.eth0.mode b/arch/riscv/mach-litex/env/nv/dev.eth0.mode
-index 7b4d4ba2e..72ab18f1e 100644
---- a/arch/riscv/mach-litex/env/nv/dev.eth0.mode
-+++ b/arch/riscv/mach-litex/env/nv/dev.eth0.mode
-@@ -1 +1 @@
--static
-+dhcp
-diff --git a/arch/riscv/mach-litex/env/nv/dev.eth0.ipaddr b/arch/riscv/mach-litex/env/nv/dev.eth0.ipaddr
-deleted file mode 100644
-index 0e6ac45ed..000000000
---- a/arch/riscv/mach-litex/env/nv/dev.eth0.ipaddr
-+++ /dev/null
-@@ -1 +0,0 @@
--192.168.1.50
-diff --git a/arch/riscv/mach-litex/env/nv/dev.eth0.netmask b/arch/riscv/mach-litex/env/nv/dev.eth0.netmask
-deleted file mode 100644
-index d30f9e9fd..000000000
---- a/arch/riscv/mach-litex/env/nv/dev.eth0.netmask
-+++ /dev/null
-@@ -1 +0,0 @@
--255.255.255.0
-diff --git a/arch/riscv/mach-litex/env/nv/dev.eth0.serverip b/arch/riscv/mach-litex/env/nv/dev.eth0.serverip
-deleted file mode 100644
-index 95b5900c7..000000000
---- a/arch/riscv/mach-litex/env/nv/dev.eth0.serverip
-+++ /dev/null
-@@ -1 +0,0 @@
--192.168.1.100
+diff --git a/drivers/serial/serial_litex.c b/drivers/serial/serial_litex.c
+index c8c50a057..f87dd4739 100644
+--- a/drivers/serial/serial_litex.c
++++ b/drivers/serial/serial_litex.c
+@@ -93,6 +93,8 @@ static int litex_serial_probe(struct device_d *dev)
+ static __maybe_unused struct of_device_id litex_serial_dt_ids[] = {
+ 	{
+ 		.compatible = "litex,uart",
++	}, {
++		.compatible = "litex,liteuart",
+ 	}, {
+ 		/* sentinel */
+ 	}
