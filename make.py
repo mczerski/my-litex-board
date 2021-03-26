@@ -50,8 +50,7 @@ def main():
         "integrated_sram_size": 0x0,
         "integrated_rom_size": 0x400,
         "l2_size" : 0x4000, # Use Wishbone and L2 for memory accesses.
-        "uart_baudrate": 1e6,
-        "uart_fifo_depth": 1024,
+        "with_uart": False,
     }
     rom_data = get_mem_data("bootrom/rom.bin", endianness="little", mem_size=soc_kwargs["integrated_rom_size"])
     soc_kwargs["integrated_rom_init"] = rom_data

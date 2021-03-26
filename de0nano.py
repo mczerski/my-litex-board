@@ -152,6 +152,16 @@ class De0SoC(SoCCore):
                 l2_cache_reverse        = True
             )
 
+        # UART -------------------------------------------------------------------------------------
+        _uart_jp_ios = [
+            ("uart", 0,
+                Subsignal("tx", Pins("JP1:34"), IOStandard("3.3-V LVTTL")),
+                Subsignal("rx", Pins("JP1:32"),  IOStandard("3.3-V LVTTL"))
+            )
+        ]
+        self.platform.add_extension(_uart_jp_ios)
+        self.add_uart(name="uart", baudrate=921600, fifo_depth=1024)
+
         # Leds -------------------------------------------------------------------------------------
         led_pads = platform.request_all("user_led")
         self.submodules.leds = GPIOOut(led_pads)
@@ -201,8 +211,19 @@ class De0SoC(SoCCore):
                 IOStandard("3.3-V LVTTL"),
             ),
         ]
+        #_sdcard_jp_ios = [
+        #    ("spisdcard", 0,
+        #        Subsignal("miso", Pins("JP2:14"), Misc("WEAK_PULL_UP_RESISTOR ON")),
+        #        Subsignal("mosi", Pins("JP2:16"), Misc("WEAK_PULL_UP_RESISTOR ON")),
+        #        Subsignal("clk", Pins("JP2:18")),
+        #        Subsignal("cs_n", Pins("JP2:20"), Misc("WEAK_PULL_UP_RESISTOR ON")),
+        #        Misc("FAST_OUTPUT_REGISTER ON"),
+        #        IOStandard("3.3-V LVTTL"),
+        #    ),
+        #]
         self.platform.add_extension(_sdcard_jp_ios)
         self.add_sdcard()
+        #self.add_spi_sdcard()
 
         # EPCS ------------------------------------------------------------------------------------
         _spi_flash_ios = [
@@ -248,7 +269,7 @@ class De0SoC(SoCCore):
         # interrupts ------------------------------------------------------------------------------
         #_interrupts_jp_ios = [
         #    ("interrupt", 0, Pins("JP2:1"),  IOStandard("3.3-V LVTTL")),
-        #    ("interrupt", 1, Pins("JP2:3"),  IOStandard("3.3-V LVTTL")),
+        #    ("interrupt", 1, Pins("JP2:26"),  IOStandard("3.3-V LVTTL")),
         #]
         #self.platform.add_extension(_interrupts_jp_ios)
         #interrupts_pads = self.platform.request_all("interrupt")
