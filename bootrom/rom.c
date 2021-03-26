@@ -2,6 +2,7 @@
 
 volatile char* UART_RXTX = (char *)0xf0001000;
 volatile char* UART_TXFULL = (char *)0xf0001004;
+volatile char* SPI_FLASH_BITBANG_EN = (char *)0xf0007808;
 unsigned int * FLASH_START = (unsigned int *)0xd0100000;
 unsigned int * BAREBOX_START = (unsigned int *)0x41e00000;
 
@@ -32,6 +33,8 @@ int _start()
 {
     print("\n\rinit sdram\n\r");
     init_sequence();
+    print("init spiflash\n\r");
+    *SPI_FLASH_BITBANG_EN = 0;
 #if 0
     static unsigned int * RAM_START = (unsigned int *)0x40000000;
     static unsigned int RAM_WORDS = 0x2000000/4;
